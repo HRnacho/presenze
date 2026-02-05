@@ -138,12 +138,11 @@ def esporta_excel(year, month):
     for merged_range in merged_ranges:
         ws.unmerge_cells(str(merged_range))
     
-    # STEP 2: Aggiorna il mese in G1
+    # STEP 2: Aggiorna il mese in RIGA 1 (non tocchiamo, lasciamo PERIODO)
+    # Non modifichiamo la riga 1
+    
     month_names = ['gennaio', 'febbraio', 'marzo', 'aprile', 'maggio', 'giugno',
                    'luglio', 'agosto', 'settembre', 'ottobre', 'novembre', 'dicembre']
-    
-    ws['G1'] = f"{month_names[int(month)-1]}-{str(year)[-2:]}"
-    ws['G1'].alignment = Alignment(horizontal='center', vertical='center')
     
     # Carica i dati delle presenze
     data = load_data()
@@ -152,11 +151,14 @@ def esporta_excel(year, month):
     
     num_days = calendar.monthrange(int(year), int(month))[1]
     
-    # Mappa username -> riga di partenza (riga Ord.)
+    # Mappa username -> righe nel template
+    # Gianluca: Ord=6, Str=7, Ass=8, Giust=9
+    # Ignacio: Ord=10, Str=11, Ass=12, Giust=13
+    # Simone: Ord=14, Str=15, Ass=16, Giust=17
     user_rows = {
-        'gianluca': 4,
-        'ignacio': 8,
-        'simone': 14,
+        'gianluca': {'ord': 6, 'str': 7, 'ass': 8, 'giust': 9},
+        'ignacio': {'ord': 10, 'str': 11, 'ass': 12, 'giust': 13},
+        'simone': {'ord': 14, 'str': 15, 'ass': 16, 'giust': 17}
     }
     
     # Festivi italiani 2025-2026
@@ -178,7 +180,10 @@ def esporta_excel(year, month):
     current_month_holidays = holidays.get(int(month), [])
     
     # STEP 3: Popola i dati per ogni dipendente
-    for username, base_row in user_rows.items():
+    # Colonna J = giorno 1, K = giorno 2, ... AN = giorno 31
+    # J è la colonna numero 10
+    
+    for username, rows in user_rows.items():
         if username not in presenze_mese:
             continue
             
@@ -186,7 +191,8 @@ def esporta_excel(year, month):
         
         # Per ogni giorno del mese
         for day in range(1, num_days + 1):
-            col_index = 3 + day
+            # Colonna J = 10, quindi giorno 1 = colonna 10, giorno 2 = colonna 11, etc.
+            col_index = 9 + day  # J=10, quindi 9+1=10
             col_letter = openpyxl.utils.get_column_letter(col_index)
             
             date_str = f"{year}-{month.zfill(2)}-{str(day).zfill(2)}"
@@ -198,10 +204,19 @@ def esporta_excel(year, month):
             # Weekend e festivi in rosso
             if is_weekend or is_holiday:
                 red_fill = PatternFill(start_color="FF0000", end_color="FF0000", fill_type="solid")
-                for offset in range(4):
-                    cell = ws[f'{col_letter}{base_row + offset}']
-                    cell.fill = red_fill
-                    cell.value = None
+                
+                ws[f'{col_letter}{rows["ord"]}'].fill = red_fill
+                ws[f'{col_letter}{rows["ord"]}'].value = None
+                
+                ws[f'{col_letter}{rows["str"]}'].fill = red_fill
+                ws[f'{col_letter}{rows["str"]}'].value = None
+                
+                ws[f'{col_letter}{rows["ass"]}'].fill = red_fill
+                ws[f'{col_letter}{rows["ass"]}'].value = None
+                
+                ws[f'{col_letter}{rows["giust"]}'].fill = red_fill
+                ws[f'{col_letter}{rows["giust"]}'].value = None
+                
                 continue
             
             # Dati presenza
@@ -215,7 +230,7 @@ def esporta_excel(year, month):
                 ore_straordinari = max(0, ore_lavorate - 8) if ore_lavorate > 8 else 0
                 
                 # Ord
-                cell_ord = ws[f'{col_letter}{base_row}']
+                cell_ord = ws[f'{col_letter}{rows["ord"]}']
                 if ore_ordinarie > 0:
                     cell_ord.value = f"{ore_ordinarie:.2f}".replace('.', ',')
                     cell_ord.alignment = Alignment(horizontal='center')
@@ -223,7 +238,7 @@ def esporta_excel(year, month):
                     cell_ord.value = None
                 
                 # Str
-                cell_str = ws[f'{col_letter}{base_row + 1}']
+                cell_str = ws[f'{col_letter}{rows["str"]}']
                 if ore_straordinari > 0:
                     cell_str.value = f"{ore_straordinari:.2f}".replace('.', ',')
                     cell_str.alignment = Alignment(horizontal='center')
@@ -231,7 +246,7 @@ def esporta_excel(year, month):
                     cell_str.value = None
                 
                 # Ass
-                cell_ass = ws[f'{col_letter}{base_row + 2}']
+                cell_ass = ws[f'{col_letter}{rows["ass"]}']
                 if ore_assenza > 0:
                     cell_ass.value = f"{ore_assenza:.2f}".replace('.', ',')
                     cell_ass.alignment = Alignment(horizontal='center')
@@ -239,7 +254,7 @@ def esporta_excel(year, month):
                     cell_ass.value = None
                 
                 # Giust
-                cell_giust = ws[f'{col_letter}{base_row + 3}']
+                cell_giust = ws[f'{col_letter}{rows["giust"]}']
                 if tipo != 'presenza' and ore_assenza > 0:
                     codice_map = {
                         'ferie': 'FERIE',
@@ -253,21 +268,26 @@ def esporta_excel(year, month):
                     cell_giust.value = None
     
     # STEP 4: Ri-mergia le celle necessarie
-    # Riga 1: intestazioni
-    ws.merge_cells('A1:B1')  # PERIODO + dicembre
-    ws.merge_cells('C1:F1')  # FILIALE DI
-    ws.merge_cells('G1:L1')  # UDINE (ora contiene il mese aggiornato)
+    # Riga 1
+    ws.merge_cells('A1:E1')  # PERIODO
     
-    # Riga 3: intestazione giorni
-    ws.merge_cells('C3:AG3')  # PRESTAZIONI PER CIASCUNA GIORNATA
+    # Riga 3: intestazioni
+    ws.merge_cells('A3:D3')   # Cognome
+    ws.merge_cells('E3:H3')   # Nome
+    ws.merge_cells('I3:AN3')  # PRESTAZIONI PER CIASCUNA GIORNATA
     
     # Cognome e Nome per ogni dipendente
-    ws.merge_cells('A4:A7')   # Gianluca - Cognome
-    ws.merge_cells('B4:B7')   # Gianluca - Nome
-    ws.merge_cells('A8:A11')  # Ignacio - Cognome
-    ws.merge_cells('B8:B11')  # Ignacio - Nome
-    ws.merge_cells('A14:A17') # Simone - Cognome
-    ws.merge_cells('B14:B17') # Simone - Nome
+    # Gianluca (righe 6-7)
+    ws.merge_cells('A6:D7')   # Cognome
+    ws.merge_cells('E6:H7')   # Nome
+    
+    # Ignacio (righe 10-11)
+    ws.merge_cells('A10:D11') # Cognome
+    ws.merge_cells('E10:H11') # Nome
+    
+    # Simone (righe 14-15)
+    ws.merge_cells('A14:D15') # Cognome
+    ws.merge_cells('E14:H15') # Nome
     
     # Salva
     output = BytesIO()
