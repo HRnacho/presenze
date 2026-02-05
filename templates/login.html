@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Presenze Direzione Lavoro</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body class="login-page">
+    <div class="login-container">
+        <div class="login-box">
+            <h1>🏢 Direzione Lavoro</h1>
+            <h2>Gestione Presenze</h2>
+            
+            {% if error %}
+            <div class="error-message">{{ error }}</div>
+            {% endif %}
+            
+            <form method="POST" action="{{ url_for('login') }}">
+                <div class="form-group">
+                    <label>Username:</label>
+                    <input type="text" name="username" required autofocus>
+                </div>
+                
+                <div class="form-group">
+                    <label>Password:</label>
+                    <input type="password" name="password" required>
+                </div>
+                
+                <button type="submit" class="btn-login">🔐 Accedi</button>
+            </form>
+            
+            <div class="login-info">
+                <p><strong>Utenti autorizzati:</strong></p>
+                <ul>
+                    <li>gianluca (Gianluca Bittoni)</li>
+                    <li>ignacio (Ignacio Sorcaburu Ciglieri)</li>
+                    <li>simone (Simone Mascellari)</li>
+                </ul>
+                <p><small>Password iniziale per tutti: <code>direzione2025</code></small></p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
