@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Calendario Presenze - Direzione Lavoro</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="header-content">
+                <h1>📅 Calendario Presenze - Direzione Lavoro</h1>
+                <div class="user-info">
+                    <span>👤 {{ nome_completo }}</span>
+                    <a href="{{ url_for('logout') }}" class="btn-logout">Esci</a>
+                </div>
+            </div>
+        </header>
+
+        <div class="controls">
+            <div class="month-selector">
+                <button onclick="cambiaMese(-1)" class="btn-nav">← Mese Prec.</button>
+                <h2 id="current-month"></h2>
+                <button onclick="cambiaMese(1)" class="btn-nav">Mese Succ. →</button>
+            </div>
+            <button onclick="esportaExcel()" class="btn-export">📥 Esporta Excel</button>
+        </div>
+
+        <div class="user-tabs">
+            {% for utente in utenti %}
+            <button class="user-tab {% if utente.username == current_user %}active{% endif %}" 
+                    onclick="selezionaUtente('{{ utente.username }}', '{{ utente.nome }}')"
+                    data-username="{{ utente.username }}">
+                {{ utente.nome }}
+            </button>
+            {% endfor %}
+        </div>
+
+        <div id="calendario-container"></div>
+
+        <div class="legenda">
+            <h3>Legenda:</h3>
+            <div class="legenda-items">
+                <span class="legenda-item presenza">✅ Presenza (8 ore)</span>
+                <span class="legenda-item ferie">🏖️ Ferie</span>
+                <span class="legenda-item rol">📋 ROL</span>
+                <span class="legenda-item malattia">🏥 Malattia</span>
+                <span class="legenda-item permesso">⏰ Permesso</span>
+                <span class="legenda-item weekend">🔒 Weekend</span>
+            </div>
+        </div>
+    </div>
+
+    <div id="modal-presenza" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="chiudiModal()">&times;</span>
+            <h2>Inserisci Presenza</h2>
+            <p id="modal-data"></p>
+            <p id="modal-utente"></p>
+            
+            <div class="form-group">
+                <label>Tipo di giornata:</label>
+                <select id="tipo-presenza" onchange="aggiornaForm()">
+                    <option value="presenza">✅ Presenza (8 ore)</option>
+                    <option value="ferie">🏖️ Ferie</option>
+                    <option value="rol">📋 ROL</option>
+                    <option value="malattia">🏥 Malattia</option>
+                    <option value="permesso">⏰ Permesso retribuito</option>
+                </select>
+            </div>
+
+            <div id="ore-permesso" style="display:none;">
+                <div class="form-group">
+                    <label>Ore lavorate:</label>
+                    <input type="number" id="ore-lavorate" min="0" max="8" step="0.5" value="4">
+                </div>
+                <div class="form-group">
+                    <label>Ore permesso:</label>
+                    <input type="number" id="ore-giustificativo" min="0" max="8" step="0.5" value="4" readonly>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>Note (opzionale):</label>
+                <textarea id="note-presenza" rows="3"></textarea>
+            </div>
+
+            <div class="modal-buttons">
+                <button onclick="salvaPresenza()" class="btn-save">💾 Salva</button>
+                <button onclick="eliminaPresenza()" class="btn-delete" id="btn-elimina" style="display:none;">🗑️ Elimina</button>
+                <button onclick="chiudiModal()" class="btn-cancel">❌ Annulla</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentYear = {{ year }};
+        let currentMonth = {{ month }};
+        let selectedUser = '{{ current_user }}';
+        let selectedUserName = '{{ nome_completo }}';
+        let selectedDate = null;
+        let presenzeData = {};
+
+        const monthNames = ['Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno',
+                           'Luglio', 'Agosto', 'Settembre', 'Ottobre', 'Novembre', 'Dicembre'];
+        const dayNames = ['Dom', 'Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab'];
+
+        function inizializza() {
+            aggiornaIntestazione();
+            caricaPresenze();
+        }
+
+        function aggiornaIntestazione() {
+            document.getElementById('current-month').textContent = `${monthNames[currentMonth - 1]} ${currentYear}`;
+        }
+
+        function cambiaMese(delta) {
+            currentMonth += delta;
+            if (currentMonth > 12) {
+                currentMonth = 1;
+                currentYear++;
+            } else if (currentMonth < 1) {
+                currentMonth = 12;
+                currentYear--;
+            }
+            aggiornaIntestazione();
+            caricaPresenze();
+        }
+
+        function selezionaUtente(username, nome) {
+            selectedUser = username;
+            selectedUserName = nome;
+            document.querySelectorAll('.user-tab').forEach(tab => {
+                tab.classList.remove('active');
+                if (tab.dataset.username === username) {
+                    tab.classList.add('active');
+                }
+            });
+            generaCalendario();
+        }
+
+        async function caricaPresenze() {
+            try {
+                const response = await fetch(`/api/presenze/${currentYear}/${currentMonth}`);
+                presenzeData = await response.json();
+                generaCalendario();
+            } catch (error) {
+                console.error('Errore:', error);
+                alert('Errore nel caricamento delle presenze');
+            }
+        }
+
+        function generaCalendario() {
+            const container = document.getElementById('calendario-container');
+            const firstDay = new Date(currentYear, currentMonth - 1, 1).getDay();
+            const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
+            
+            let html = '<div class="calendario"><div class="calendario-header">';
+            dayNames.forEach(day => {
+                html += `<div class="day-name">${day}</div>`;
+            });
+            html += '</div><div class="calendario-days">';
+            
+            for (let i = 0; i < firstDay; i++) {
+                html += '<div class="day empty"></div>';
+            }
+            
+            for (let day = 1; day <= daysInMonth; day++) {
+                const date = new Date(currentYear, currentMonth - 1, day);
+                const dateStr = `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                const isWeekend = date.getDay() === 0 || date.getDay() === 6;
+                
+                let presenza = null;
+                if (presenzeData[selectedUser] && presenzeData[selectedUser][dateStr]) {
+                    presenza = presen
