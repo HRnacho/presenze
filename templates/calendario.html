@@ -62,7 +62,7 @@
             <div class="form-group">
                 <label>Tipo di giornata:</label>
                 <select id="tipo-presenza" onchange="aggiornaForm()">
-                    <option value="presenza">✅ Presenza (8 ore)</option>
+                    <option value="presenza">✅ Presenza completa (8 ore lavorate)</option>
                     <option value="ferie">🏖️ Ferie</option>
                     <option value="rol">📋 ROL</option>
                     <option value="malattia">🏥 Malattia</option>
@@ -70,14 +70,14 @@
                 </select>
             </div>
 
-            <div id="ore-permesso" style="display:none;">
+            <div id="campi-ore">
                 <div class="form-group">
                     <label>Ore lavorate:</label>
-                    <input type="number" id="ore-lavorate" min="0" max="8" step="0.5" value="4">
+                    <input type="number" id="ore-lavorate" min="0" max="8" step="0.5" value="8">
                 </div>
                 <div class="form-group">
-                    <label>Ore permesso:</label>
-                    <input type="number" id="ore-giustificativo" min="0" max="8" step="0.5" value="4" readonly>
+                    <label>Ore assenza/giustificativo:</label>
+                    <input type="number" id="ore-assenza" min="0" max="8" step="0.5" value="0">
                 </div>
             </div>
 
@@ -109,6 +109,18 @@
         function inizializza() {
             aggiornaIntestazione();
             caricaPresenze();
+            
+            document.getElementById('ore-lavorate').addEventListener('input', function() {
+                const oreLavorate = parseFloat(this.value) || 0;
+                const oreAssenza = Math.max(0, 8 - oreLavorate);
+                document.getElementById('ore-assenza').value = oreAssenza;
+            });
+            
+            document.getElementById('ore-assenza').addEventListener('input', function() {
+                const oreAssenza = parseFloat(this.value) || 0;
+                const oreLavorate = Math.max(0, 8 - oreAssenza);
+                document.getElementById('ore-lavorate').value = oreLavorate;
+            });
         }
 
         function aggiornaIntestazione() {
@@ -185,31 +197,34 @@
                     icon = '🔒';
                 } else if (presenza) {
                     classDay += ' has-presenza';
+                    const oreLavorate = presenza.ore_lavorate || 0;
+                    const oreAssenza = presenza.ore_assenza || 0;
+                    
                     switch (presenza.tipo) {
                         case 'presenza':
                             classDay += ' tipo-presenza';
                             icon = '✅';
-                            info = `${presenza.ore_lavorate}h`;
+                            info = `${oreLavorate}h`;
                             break;
                         case 'ferie':
                             classDay += ' tipo-ferie';
                             icon = '🏖️';
-                            info = 'Ferie';
+                            info = `${oreLavorate}h + ${oreAssenza}h F`;
                             break;
                         case 'rol':
                             classDay += ' tipo-rol';
                             icon = '📋';
-                            info = 'ROL';
+                            info = `${oreLavorate}h + ${oreAssenza}h R`;
                             break;
                         case 'malattia':
                             classDay += ' tipo-malattia';
                             icon = '🏥';
-                            info = 'Malattia';
+                            info = `${oreLavorate}h + ${oreAssenza}h M`;
                             break;
                         case 'permesso':
                             classDay += ' tipo-permesso';
                             icon = '⏰';
-                            info = `${presenza.ore_lavorate}h + ${presenza.ore_giustificativo}h perm.`;
+                            info = `${oreLavorate}h + ${oreAssenza}h P`;
                             break;
                     }
                 }
@@ -246,17 +261,15 @@
             const presenza = presenzeData[selectedUser]?.[dateStr];
             if (presenza) {
                 document.getElementById('tipo-presenza').value = presenza.tipo;
+                document.getElementById('ore-lavorate').value = presenza.ore_lavorate || 0;
+                document.getElementById('ore-assenza').value = presenza.ore_assenza || 0;
                 document.getElementById('note-presenza').value = presenza.note || '';
-                if (presenza.tipo === 'permesso') {
-                    document.getElementById('ore-lavorate').value = presenza.ore_lavorate;
-                    document.getElementById('ore-giustificativo').value = presenza.ore_giustificativo;
-                }
                 document.getElementById('btn-elimina').style.display = 'inline-block';
             } else {
                 document.getElementById('tipo-presenza').value = 'presenza';
+                document.getElementById('ore-lavorate').value = 8;
+                document.getElementById('ore-assenza').value = 0;
                 document.getElementById('note-presenza').value = '';
-                document.getElementById('ore-lavorate').value = 4;
-                document.getElementById('ore-giustificativo').value = 4;
                 document.getElementById('btn-elimina').style.display = 'none';
             }
             
@@ -270,41 +283,29 @@
 
         function aggiornaForm() {
             const tipo = document.getElementById('tipo-presenza').value;
-            const orePermessoDiv = document.getElementById('ore-permesso');
-            if (tipo === 'permesso') {
-                orePermessoDiv.style.display = 'block';
-                const oreLavorate = parseFloat(document.getElementById('ore-lavorate').value) || 0;
-                document.getElementById('ore-giustificativo').value = 8 - oreLavorate;
+            
+            if (tipo === 'presenza') {
+                document.getElementById('ore-lavorate').value = 8;
+                document.getElementById('ore-assenza').value = 0;
             } else {
-                orePermessoDiv.style.display = 'none';
+                const oreLavorate = parseFloat(document.getElementById('ore-lavorate').value) || 0;
+                const oreAssenza = parseFloat(document.getElementById('ore-assenza').value) || 0;
+                
+                if (oreLavorate === 8 && oreAssenza === 0) {
+                    document.getElementById('ore-lavorate').value = 0;
+                    document.getElementById('ore-assenza').value = 8;
+                }
             }
         }
 
-        document.addEventListener('DOMContentLoaded', function() {
-            const oreLavorateInput = document.getElementById('ore-lavorate');
-            if (oreLavorateInput) {
-                oreLavorateInput.addEventListener('input', function() {
-                    const oreLavorate = parseFloat(this.value) || 0;
-                    document.getElementById('ore-giustificativo').value = Math.max(0, 8 - oreLavorate);
-                });
-            }
-        });
-
         async function salvaPresenza() {
             const tipo = document.getElementById('tipo-presenza').value;
-            let ore_lavorate = 0;
-            let ore_giustificativo = 0;
+            let ore_lavorate = parseFloat(document.getElementById('ore-lavorate').value) || 0;
+            let ore_assenza = parseFloat(document.getElementById('ore-assenza').value) || 0;
             
-            switch (tipo) {
-                case 'presenza':
-                    ore_lavorate = 8;
-                    break;
-                case 'permesso':
-                    ore_lavorate = parseFloat(document.getElementById('ore-lavorate').value) || 0;
-                    ore_giustificativo = parseFloat(document.getElementById('ore-giustificativo').value) || 0;
-                    break;
-                default:
-                    ore_giustificativo = 8;
+            if (ore_lavorate + ore_assenza !== 8) {
+                alert('La somma delle ore lavorate e assenza deve essere 8');
+                return;
             }
             
             const data = {
@@ -312,7 +313,7 @@
                 date: selectedDate,
                 tipo: tipo,
                 ore_lavorate: ore_lavorate,
-                ore_giustificativo: ore_giustificativo,
+                ore_assenza: ore_assenza,
                 note: document.getElementById('note-presenza').value
             };
             
