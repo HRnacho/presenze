@@ -173,4 +173,209 @@
                 
                 let presenza = null;
                 if (presenzeData[selectedUser] && presenzeData[selectedUser][dateStr]) {
-                    presenza = presen
+                    presenza = presenzeData[selectedUser][dateStr];
+                }
+                
+                let classDay = 'day';
+                let icon = '';
+                let info = '';
+                
+                if (isWeekend) {
+                    classDay += ' weekend';
+                    icon = '🔒';
+                } else if (presenza) {
+                    classDay += ' has-presenza';
+                    switch (presenza.tipo) {
+                        case 'presenza':
+                            classDay += ' tipo-presenza';
+                            icon = '✅';
+                            info = `${presenza.ore_lavorate}h`;
+                            break;
+                        case 'ferie':
+                            classDay += ' tipo-ferie';
+                            icon = '🏖️';
+                            info = 'Ferie';
+                            break;
+                        case 'rol':
+                            classDay += ' tipo-rol';
+                            icon = '📋';
+                            info = 'ROL';
+                            break;
+                        case 'malattia':
+                            classDay += ' tipo-malattia';
+                            icon = '🏥';
+                            info = 'Malattia';
+                            break;
+                        case 'permesso':
+                            classDay += ' tipo-permesso';
+                            icon = '⏰';
+                            info = `${presenza.ore_lavorate}h + ${presenza.ore_giustificativo}h perm.`;
+                            break;
+                    }
+                }
+                
+                const oggi = new Date();
+                if (date.toDateString() === oggi.toDateString()) {
+                    classDay += ' today';
+                }
+                
+                html += `<div class="${classDay}" onclick="apriModal('${dateStr}', ${isWeekend})">
+                            <div class="day-number">${day}</div>
+                            <div class="day-icon">${icon}</div>
+                            <div class="day-info">${info}</div>
+                         </div>`;
+            }
+            
+            html += '</div></div>';
+            container.innerHTML = html;
+        }
+
+        function apriModal(dateStr, isWeekend) {
+            if (isWeekend) {
+                alert('Non puoi inserire presenze nel weekend');
+                return;
+            }
+            
+            selectedDate = dateStr;
+            const date = new Date(dateStr + 'T00:00:00');
+            const dayName = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'][date.getDay()];
+            
+            document.getElementById('modal-data').textContent = `📅 ${dayName} ${date.getDate()}/${date.getMonth() + 1}/${date.getFullYear()}`;
+            document.getElementById('modal-utente').textContent = `👤 ${selectedUserName}`;
+            
+            const presenza = presenzeData[selectedUser]?.[dateStr];
+            if (presenza) {
+                document.getElementById('tipo-presenza').value = presenza.tipo;
+                document.getElementById('note-presenza').value = presenza.note || '';
+                if (presenza.tipo === 'permesso') {
+                    document.getElementById('ore-lavorate').value = presenza.ore_lavorate;
+                    document.getElementById('ore-giustificativo').value = presenza.ore_giustificativo;
+                }
+                document.getElementById('btn-elimina').style.display = 'inline-block';
+            } else {
+                document.getElementById('tipo-presenza').value = 'presenza';
+                document.getElementById('note-presenza').value = '';
+                document.getElementById('ore-lavorate').value = 4;
+                document.getElementById('ore-giustificativo').value = 4;
+                document.getElementById('btn-elimina').style.display = 'none';
+            }
+            
+            aggiornaForm();
+            document.getElementById('modal-presenza').style.display = 'block';
+        }
+
+        function chiudiModal() {
+            document.getElementById('modal-presenza').style.display = 'none';
+        }
+
+        function aggiornaForm() {
+            const tipo = document.getElementById('tipo-presenza').value;
+            const orePermessoDiv = document.getElementById('ore-permesso');
+            if (tipo === 'permesso') {
+                orePermessoDiv.style.display = 'block';
+                const oreLavorate = parseFloat(document.getElementById('ore-lavorate').value) || 0;
+                document.getElementById('ore-giustificativo').value = 8 - oreLavorate;
+            } else {
+                orePermessoDiv.style.display = 'none';
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            const oreLavorateInput = document.getElementById('ore-lavorate');
+            if (oreLavorateInput) {
+                oreLavorateInput.addEventListener('input', function() {
+                    const oreLavorate = parseFloat(this.value) || 0;
+                    document.getElementById('ore-giustificativo').value = Math.max(0, 8 - oreLavorate);
+                });
+            }
+        });
+
+        async function salvaPresenza() {
+            const tipo = document.getElementById('tipo-presenza').value;
+            let ore_lavorate = 0;
+            let ore_giustificativo = 0;
+            
+            switch (tipo) {
+                case 'presenza':
+                    ore_lavorate = 8;
+                    break;
+                case 'permesso':
+                    ore_lavorate = parseFloat(document.getElementById('ore-lavorate').value) || 0;
+                    ore_giustificativo = parseFloat(document.getElementById('ore-giustificativo').value) || 0;
+                    break;
+                default:
+                    ore_giustificativo = 8;
+            }
+            
+            const data = {
+                username: selectedUser,
+                date: selectedDate,
+                tipo: tipo,
+                ore_lavorate: ore_lavorate,
+                ore_giustificativo: ore_giustificativo,
+                note: document.getElementById('note-presenza').value
+            };
+            
+            try {
+                const response = await fetch('/api/presenza', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(data)
+                });
+                
+                const result = await response.json();
+                if (result.success) {
+                    chiudiModal();
+                    caricaPresenze();
+                } else {
+                    alert('Errore nel salvataggio: ' + result.error);
+                }
+            } catch (error) {
+                console.error('Errore:', error);
+                alert('Errore nel salvataggio della presenza');
+            }
+        }
+
+        async function eliminaPresenza() {
+            if (!confirm('Sei sicuro di voler eliminare questa presenza?')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/elimina_presenza', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        username: selectedUser,
+                        date: selectedDate
+                    })
+                });
+                
+                const result = await response.json();
+                if (result.success) {
+                    chiudiModal();
+                    caricaPresenze();
+                } else {
+                    alert('Errore nell\'eliminazione: ' + result.error);
+                }
+            } catch (error) {
+                console.error('Errore:', error);
+                alert('Errore nell\'eliminazione della presenza');
+            }
+        }
+
+        function esportaExcel() {
+            window.location.href = `/esporta/${currentYear}/${currentMonth}`;
+        }
+
+        window.onclick = function(event) {
+            const modal = document.getElementById('modal-presenza');
+            if (event.target === modal) {
+                chiudiModal();
+            }
+        }
+
+        window.onload = inizializza;
+    </script>
+</body>
+</html>
