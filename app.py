@@ -133,15 +133,17 @@ def esporta_excel(year, month):
     wb = openpyxl.load_workbook(template_path)
     ws = wb.active
     
-    # Aggiorna il mese in G1 (celle unite G1:L1)
+    # STEP 1: Unmerge TUTTE le celle merged
+    merged_ranges = list(ws.merged_cells.ranges)
+    for merged_range in merged_ranges:
+        ws.unmerge_cells(str(merged_range))
+    
+    # STEP 2: Aggiorna il mese in G1
     month_names = ['gennaio', 'febbraio', 'marzo', 'aprile', 'maggio', 'giugno',
                    'luglio', 'agosto', 'settembre', 'ottobre', 'novembre', 'dicembre']
     
-    # Unmerge G1:L1, modifica, ri-merge
-    ws.unmerge_cells('G1:L1')
     ws['G1'] = f"{month_names[int(month)-1]}-{str(year)[-2:]}"
     ws['G1'].alignment = Alignment(horizontal='center', vertical='center')
-    ws.merge_cells('G1:L1')
     
     # Carica i dati delle presenze
     data = load_data()
@@ -175,7 +177,7 @@ def esporta_excel(year, month):
     
     current_month_holidays = holidays.get(int(month), [])
     
-    # Popola i dati per ogni dipendente
+    # STEP 3: Popola i dati per ogni dipendente
     for username, base_row in user_rows.items():
         if username not in presenze_mese:
             continue
@@ -249,6 +251,23 @@ def esporta_excel(year, month):
                     cell_giust.alignment = Alignment(horizontal='center')
                 else:
                     cell_giust.value = None
+    
+    # STEP 4: Ri-mergia le celle necessarie
+    # Riga 1: intestazioni
+    ws.merge_cells('A1:B1')  # PERIODO + dicembre
+    ws.merge_cells('C1:F1')  # FILIALE DI
+    ws.merge_cells('G1:L1')  # UDINE (ora contiene il mese aggiornato)
+    
+    # Riga 3: intestazione giorni
+    ws.merge_cells('C3:AG3')  # PRESTAZIONI PER CIASCUNA GIORNATA
+    
+    # Cognome e Nome per ogni dipendente
+    ws.merge_cells('A4:A7')   # Gianluca - Cognome
+    ws.merge_cells('B4:B7')   # Gianluca - Nome
+    ws.merge_cells('A8:A11')  # Ignacio - Cognome
+    ws.merge_cells('B8:B11')  # Ignacio - Nome
+    ws.merge_cells('A14:A17') # Simone - Cognome
+    ws.merge_cells('B14:B17') # Simone - Nome
     
     # Salva
     output = BytesIO()
