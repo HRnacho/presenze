@@ -133,10 +133,26 @@ def esporta_excel(year, month):
     wb = openpyxl.load_workbook(template_path)
     ws = wb.active
     
-    # Aggiorna il periodo (cella B1)
+    # Aggiorna il periodo nelle celle G-L unite (riga 1)
     month_names = ['gennaio', 'febbraio', 'marzo', 'aprile', 'maggio', 'giugno',
                    'luglio', 'agosto', 'settembre', 'ottobre', 'novembre', 'dicembre']
-    ws['B1'] = f"{month_names[int(month)-1]}-{str(year)[-2:]}"
+    
+    # Trova e unmerge le celle G1:L1 se sono merged
+    merged_cells_to_unmerge = []
+    for merged_cell_range in ws.merged_cells.ranges:
+        # Controlla se G1 è nel range merged
+        if 'G1' in merged_cell_range:
+            merged_cells_to_unmerge.append(merged_cell_range)
+    
+    for merged_range in merged_cells_to_unmerge:
+        ws.unmerge_cells(str(merged_range))
+    
+    # Scrivi il mese in G1
+    ws['G1'] = f"{month_names[int(month)-1]}-{str(year)[-2:]}"
+    
+    # Ri-mergia le celle G1:L1
+    ws.merge_cells('G1:L1')
+    ws['G1'].alignment = Alignment(horizontal='center', vertical='center')
     
     # Carica i dati delle presenze
     data = load_data()
@@ -152,18 +168,23 @@ def esporta_excel(year, month):
         'simone': 14,    # Mascellari Simone inizia alla riga 14
     }
     
-    # Festivi italiani 2025
-    holidays_2025 = {
+    # Festivi italiani 2025-2026
+    holidays = {
         1: [1, 6],           # Capodanno, Epifania
-        4: [20, 21],         # Pasqua, Pasquetta
+        2: [],               # Febbraio 2026
+        3: [],               # Marzo 2026
+        4: [20, 21],         # Pasqua, Pasquetta (2025)
         5: [1],              # Festa del Lavoro
         6: [2],              # Festa della Repubblica
+        7: [],               # Luglio
         8: [15],             # Ferragosto
+        9: [],               # Settembre
+        10: [],              # Ottobre
         11: [1],             # Ognissanti
         12: [8, 25, 26]      # Immacolata, Natale, Santo Stefano
     }
     
-    current_month_holidays = holidays_2025.get(int(month), [])
+    current_month_holidays = holidays.get(int(month), [])
     
     # Popola i dati per ogni dipendente
     for username, base_row in user_rows.items():
@@ -174,8 +195,7 @@ def esporta_excel(year, month):
         
         # Per ogni giorno del mese
         for day in range(1, num_days + 1):
-            # Calcola l'indice di colonna (D=4, E=5, ... colonna 1 + giorno)
-            # Le colonne sono: A=Cognome, B=Nome, C=vuota, D=1, E=2, etc.
+            # Calcola l'indice di colonna (D=4, E=5, ... colonna 3 + giorno)
             col_index = 3 + day  # D è la colonna 4, quindi 3+1=4
             col_letter = openpyxl.utils.get_column_letter(col_index)
             
@@ -202,15 +222,13 @@ def esporta_excel(year, month):
                 ore_assenza = presenza.get('ore_assenza', 0)
                 
                 # Calcola ore ordinarie e straordinari
-                # Ore ordinarie = min(8, ore_lavorate) - ore_assenza
-                # Straordinari = ore sopra le 8
                 ore_ordinarie = max(0, min(8, ore_lavorate) - ore_assenza)
                 ore_straordinari = max(0, ore_lavorate - 8) if ore_lavorate > 8 else 0
                 
                 # Riga Ord. (ore ordinarie)
                 cell_ord = ws[f'{col_letter}{base_row}']
                 if ore_ordinarie > 0:
-                    cell_ord.value = f"{ore_ordinarie:.2f}".replace('.', ',')  # Formato italiano
+                    cell_ord.value = f"{ore_ordinarie:.2f}".replace('.', ',')
                     cell_ord.alignment = Alignment(horizontal='center')
                 else:
                     cell_ord.value = None
