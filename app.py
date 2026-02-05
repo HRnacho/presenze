@@ -126,133 +126,137 @@ def esporta_excel(year, month):
     from io import BytesIO
     from flask import send_file
     import openpyxl
-    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.styles import PatternFill, Alignment
     
+    # Carica il template Excel
+    template_path = os.path.join('templates', 'Foglio_presenze_UDINE_Dicembre_2025.xlsx')
+    wb = openpyxl.load_workbook(template_path)
+    ws = wb.active
+    
+    # Aggiorna il periodo (cella B1)
+    month_names = ['gennaio', 'febbraio', 'marzo', 'aprile', 'maggio', 'giugno',
+                   'luglio', 'agosto', 'settembre', 'ottobre', 'novembre', 'dicembre']
+    ws['B1'] = f"{month_names[int(month)-1]}-{str(year)[-2:]}"
+    
+    # Carica i dati delle presenze
     data = load_data()
     key = f"{year}-{month.zfill(2)}"
     presenze_mese = data.get(key, {})
     
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "Presenze"
-    
-    month_name = ['Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno',
-                  'Luglio', 'Agosto', 'Settembre', 'Ottobre', 'Novembre', 'Dicembre'][int(month)-1]
-    
-    ws['A1'] = f"FOGLIO PRESENZE - {month_name.upper()} {year}"
-    ws['A1'].font = Font(bold=True, size=14)
-    ws.merge_cells('A1:AG1')
-    
-    ws['A3'] = "COGNOME E NOME"
-    ws['A3'].font = Font(bold=True, size=11)
-    ws['A3'].fill = PatternFill(start_color="CCCCCC", end_color="CCCCCC", fill_type="solid")
-    ws['B3'] = ""
-    ws['B3'].fill = PatternFill(start_color="CCCCCC", end_color="CCCCCC", fill_type="solid")
-    
     num_days = calendar.monthrange(int(year), int(month))[1]
-    for day in range(1, num_days + 1):
-        col = day + 2
-        ws.cell(row=3, column=col).value = day
-        ws.cell(row=3, column=col).font = Font(bold=True, size=10)
-        ws.cell(row=3, column=col).alignment = Alignment(horizontal='center')
-        ws.cell(row=3, column=col).fill = PatternFill(start_color="CCCCCC", end_color="CCCCCC", fill_type="solid")
-        ws.column_dimensions[openpyxl.utils.get_column_letter(col)].width = 4
     
-    ws.column_dimensions['A'].width = 25
-    ws.column_dimensions['B'].width = 6
+    # Mappa username -> riga di partenza nel template (riga Ord.)
+    user_rows = {
+        'gianluca': 4,   # Bittoni Gianluca inizia alla riga 4
+        'ignacio': 8,    # Sorcaburu Ciglieri Ignacio inizia alla riga 8
+        'simone': 14,    # Mascellari Simone inizia alla riga 14
+    }
     
-    thin_border = Border(
-        left=Side(style='thin'),
-        right=Side(style='thin'),
-        top=Side(style='thin'),
-        bottom=Side(style='thin')
-    )
+    # Festivi italiani 2025
+    holidays_2025 = {
+        1: [1, 6],           # Capodanno, Epifania
+        4: [20, 21],         # Pasqua, Pasquetta
+        5: [1],              # Festa del Lavoro
+        6: [2],              # Festa della Repubblica
+        8: [15],             # Ferragosto
+        11: [1],             # Ognissanti
+        12: [8, 25, 26]      # Immacolata, Natale, Santo Stefano
+    }
     
-    start_row = 4
+    current_month_holidays = holidays_2025.get(int(month), [])
     
-    for idx, (username, user_info) in enumerate(USERS.items()):
-        nome_completo = user_info['nome']
-        presenze_user = presenze_mese.get(username, {})
+    # Popola i dati per ogni dipendente
+    for username, base_row in user_rows.items():
+        if username not in presenze_mese:
+            continue
+            
+        presenze_user = presenze_mese[username]
         
-        base_row = start_row + (idx * 4)
-        
-        ws.merge_cells(f'A{base_row}:A{base_row+3}')
-        ws.cell(row=base_row, column=1).value = nome_completo
-        ws.cell(row=base_row, column=1).font = Font(bold=True, size=10)
-        ws.cell(row=base_row, column=1).alignment = Alignment(vertical='center', horizontal='left')
-        ws.cell(row=base_row, column=1).border = thin_border
-        
-        labels = ['ORD', 'STR', 'ASS', 'GIUST']
-        for i, label in enumerate(labels):
-            ws.cell(row=base_row + i, column=2).value = label
-            ws.cell(row=base_row + i, column=2).font = Font(bold=True, size=9)
-            ws.cell(row=base_row + i, column=2).alignment = Alignment(horizontal='center')
-            ws.cell(row=base_row + i, column=2).border = thin_border
-        
+        # Per ogni giorno del mese
         for day in range(1, num_days + 1):
+            # Calcola l'indice di colonna (D=4, E=5, ... colonna 1 + giorno)
+            # Le colonne sono: A=Cognome, B=Nome, C=vuota, D=1, E=2, etc.
+            col_index = 3 + day  # D è la colonna 4, quindi 3+1=4
+            col_letter = openpyxl.utils.get_column_letter(col_index)
+            
             date_str = f"{year}-{month.zfill(2)}-{str(day).zfill(2)}"
             date_obj = datetime.strptime(date_str, '%Y-%m-%d')
-            col = day + 2
             
-            is_weekend = date_obj.weekday() in [5, 6]
+            is_weekend = date_obj.weekday() in [5, 6]  # Sabato=5, Domenica=6
+            is_holiday = day in current_month_holidays
             
-            if is_weekend:
-                gray_fill = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")
-                for i in range(4):
-                    cell = ws.cell(row=base_row + i, column=col)
-                    cell.fill = gray_fill
-                    cell.border = thin_border
-            else:
-                if date_str in presenze_user:
-                    presenza = presenze_user[date_str]
-                    tipo = presenza.get('tipo')
-                    ore_lavorate = presenza.get('ore_lavorate', 0)
-                    ore_assenza = presenza.get('ore_assenza', 0)
-                    
-                    cell_ord = ws.cell(row=base_row, column=col)
-                    if ore_lavorate > 0:
-                        cell_ord.value = ore_lavorate
-                        cell_ord.alignment = Alignment(horizontal='center')
-                    cell_ord.border = thin_border
-                    
-                    cell_str = ws.cell(row=base_row + 1, column=col)
-                    cell_str.border = thin_border
-                    
-                    cell_ass = ws.cell(row=base_row + 2, column=col)
-                    if ore_assenza > 0:
-                        cell_ass.value = ore_assenza
-                        cell_ass.alignment = Alignment(horizontal='center')
-                    cell_ass.border = thin_border
-                    
-                    cell_giust = ws.cell(row=base_row + 3, column=col)
-                    if tipo != 'presenza':
-                        codice = ''
-                        if tipo == 'ferie':
-                            codice = 'F'
-                        elif tipo == 'rol':
-                            codice = 'R'
-                        elif tipo == 'malattia':
-                            codice = 'M'
-                        elif tipo == 'permesso':
-                            codice = 'P'
-                        
-                        if codice:
-                            cell_giust.value = codice
-                            cell_giust.alignment = Alignment(horizontal='center')
-                            cell_giust.font = Font(bold=True)
-                    cell_giust.border = thin_border
+            # Colora weekend e festivi in rosso e lascia vuoto
+            if is_weekend or is_holiday:
+                red_fill = PatternFill(start_color="FF0000", end_color="FF0000", fill_type="solid")
+                for offset in range(4):  # 4 righe: Ord, Str, Ass, Giust
+                    cell = ws[f'{col_letter}{base_row + offset}']
+                    cell.fill = red_fill
+                    cell.value = None
+                continue
+            
+            # Se ci sono dati per questo giorno
+            if date_str in presenze_user:
+                presenza = presenze_user[date_str]
+                tipo = presenza.get('tipo', 'presenza')
+                ore_lavorate = presenza.get('ore_lavorate', 0)
+                ore_assenza = presenza.get('ore_assenza', 0)
+                
+                # Calcola ore ordinarie e straordinari
+                # Ore ordinarie = min(8, ore_lavorate) - ore_assenza
+                # Straordinari = ore sopra le 8
+                ore_ordinarie = max(0, min(8, ore_lavorate) - ore_assenza)
+                ore_straordinari = max(0, ore_lavorate - 8) if ore_lavorate > 8 else 0
+                
+                # Riga Ord. (ore ordinarie)
+                cell_ord = ws[f'{col_letter}{base_row}']
+                if ore_ordinarie > 0:
+                    cell_ord.value = f"{ore_ordinarie:.2f}".replace('.', ',')  # Formato italiano
+                    cell_ord.alignment = Alignment(horizontal='center')
                 else:
-                    for i in range(4):
-                        cell = ws.cell(row=base_row + i, column=col)
-                        cell.border = thin_border
+                    cell_ord.value = None
+                
+                # Riga Str. (straordinari)
+                cell_str = ws[f'{col_letter}{base_row + 1}']
+                if ore_straordinari > 0:
+                    cell_str.value = f"{ore_straordinari:.2f}".replace('.', ',')
+                    cell_str.alignment = Alignment(horizontal='center')
+                else:
+                    cell_str.value = None
+                
+                # Riga Ass. (assenze)
+                cell_ass = ws[f'{col_letter}{base_row + 2}']
+                if ore_assenza > 0:
+                    cell_ass.value = f"{ore_assenza:.2f}".replace('.', ',')
+                    cell_ass.alignment = Alignment(horizontal='center')
+                else:
+                    cell_ass.value = None
+                
+                # Riga Giust. (giustificativo)
+                cell_giust = ws[f'{col_letter}{base_row + 3}']
+                if tipo != 'presenza' and ore_assenza > 0:
+                    codice_map = {
+                        'ferie': 'FERIE',
+                        'rol': 'ROL',
+                        'malattia': 'MALATTIA',
+                        'permesso': 'PERMESSO'
+                    }
+                    cell_giust.value = codice_map.get(tipo, '')
+                    cell_giust.alignment = Alignment(horizontal='center')
+                else:
+                    cell_giust.value = None
     
+    # Salva in BytesIO per il download
     output = BytesIO()
     wb.save(output)
     output.seek(0)
     
-    filename = f"Presenze_{month_name}_{year}.xlsx"
-    return send_file(output, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                     as_attachment=True, download_name=filename)
+    filename = f"Foglio_presenze_UDINE_{month_names[int(month)-1].title()}_{year}.xlsx"
+    return send_file(
+        output,
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        as_attachment=True,
+        download_name=filename
+    )
 
 if __name__ == '__main__':
     os.makedirs('data', exist_ok=True)
